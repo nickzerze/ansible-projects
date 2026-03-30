@@ -3,7 +3,7 @@ apt install openjdk-8-jre-headless
 apt install net-tools
 
 cd /opt
-wget https://download.sonatype.com/nexus/3/latest-linux-x86_64.tar.gz
+wget https://download.sonatype.com/nexus/3/latest-unix.tar.gz
 tar -zxvf latest-unix.tar.gz
 
 adduser nexus

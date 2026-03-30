@@ -18,7 +18,7 @@
       register: stat_result
     - name: Download Nexus
       get_url:
-        url: https://download.sonatype.com/nexus/3/latest-linux-x86_64.tar.gz
+        url: https://download.sonatype.com/nexus/3/latest-unix.tar.gz
         dest: /opt/
       register: download_result
     - name: Untar Nexus installer
