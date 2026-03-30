@@ -28,7 +28,7 @@
         remote_src: yes
       when: not stat_result.stat.exists
     - name: Find nexus folder
-      find: 
+      find:
         paths: /opt
         pattern: "nexus-*"
         file_type: directory
@@ -44,7 +44,7 @@
       group:
         name: nexus
         state: present
-    - name: Create nexus user 
+    - name: Create nexus user
       user:
         name: nexus
         group: nexus
@@ -69,7 +69,7 @@
   become_user: nexus
   tasks:
     - name: Set run_as_user nexus
-      lineinfile: 
+      lineinfile:
         path: /opt/nexus/bin/nexus.rc
         regexp: '^#run_as_user=""'
         line: run_as_user="nexus"
@@ -85,7 +85,7 @@
     - debug: msg={{app_status.stdout_lines}}
     - name: Wait one minute
       pause:
-        minutes: 1 
+        minutes: 1
     - name: Check with netstat
       shell: netstat -plnt
       register: app_status
