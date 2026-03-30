@@ -1,6 +1,7 @@
 ---
 - name: Install node and npm
-  hosts: 165.22.22.94
+  # replace with your host IP address
+  hosts: X.X.X.X
   tasks:
     - name: Update apt repo and cache
       apt: update_cache=yes force_apt_get=yes cache_valid_time=3600
@@ -12,32 +13,39 @@
 
 
 - name: Create new linux user for node app
-  hosts: 165.22.22.94
-  vars_files:
-    project-vars
+  # replace with your host IP address
+  hosts: X.X.X.X
   tasks:
     - name: Create linux user
       user:
-        name: "{{linux_name}}" 
+      # replace with your username
+        name: "{{linux_name}}"
         comment: Node User
         group: admin
 
+
 - name: Deploy nodejs app
-  hosts: 165.22.22.94
+  # replace with your host IP address
+  hosts: X.X.X.X
   become: True
+  # replace with your username
   become_user: "{{linux_name}}"
   vars_files:
     project-vars
   tasks:
     - name: Unpack the nodejs file
       unarchive:
+        # replace with your folder location
         src: "{{location}}/nodejs-app-{{version}}.tgz"
+        # replace with your folder location
         dest: "{{user_home_dir}}"
     - name: Install dependencies
       npm:
+        # replace with your folder location
         path: "{{user_home_dir}}/package"
     - name: Start the application
       command:
+        # replace with your folder location
         chdir: "{{user_home_dir}}/package/app"
         cmd: node server
       async: 1000
