@@ -1,92 +1,61 @@
 ---
+# 1o PLAY
+# Θα πρέπει να τρέξω αυτό το Playbook με δικαιώματα root, καθώς θα εγκαταστήσουμε πακέτα και θα κάνουμε αλλαγές στο σύστημα.
+# Γι'αυτό βάζουμε το "become: True" και "become_user: root" στο playbook.
+# Παρακάτω όμως θα τρέξω το nexus ως μη-root χρήστης (και συγκεκριμένα ως "nexus"), γι'αυτό θα πρέπει να εγκαταστήσω και το acl.
 - name: Install java and net-tools
   hosts: nexus_server
+  become: True
+  become_user: root
   tasks:
     - name: Update apt repo and cache
       apt: update_cache=yes force_apt_get=yes cache_valid_time=3600
-    - name: Install Java 8
-      apt: name=openjdk-8-jre-headless
+    - name: Install Java 21
+      apt: name=openjdk-21-jdk
     - name: Install net-tools
       apt: name=net-tools
+    - name: Install ACL
+      apt: name=acl
 
+# 2o PLAY
 - name: Download and unpack Nexus installer
   hosts: nexus_server
+  become: True
+  become_user: root
   tasks:
-    - name: Check nexus folder stats
-      stat:
-        path: /opt/nexus
-      register: stat_result
+    # Task 1: Κατεβάζουμε το latest Nexus installer και το αποθηκεύουμε στο /opt/ φάκελο. Κρατάμε το αποτέλεσμα στην μεταβλητή "download_result"
+    #         γιατί θέλω να βρω ακριβώς το όνομα του αρχείου που κατέβηκε, για να το αποσυμπιέσω στο επόμενο βήμα.
     - name: Download Nexus
       get_url:
         url: https://download.sonatype.com/nexus/3/latest-linux-x86_64.tar.gz
         dest: /opt/
       register: download_result
-    - name: Untar Nexus installer
+    - debug:  msg="{{ download_result }}"
+    # Task 2: Κάνουμε unarchive το αρχειο που κατέβηκε και βρίσκουμε ακριβώς το όνομα (αλλάζει καθώς αλλάζει και το version του Nexus)
+    #         και το αποθηκεύουμε στον φάκελο /opt/
+    #         SOS: Επειδή το αρχείο είναι σε remote server, πρέπει να βάλουμε το "remote_src: yes" ώστε να καταλάβει το Ansible και να μην το ψάει τοπικά.
+    - name: Untar nexus installer
       unarchive:
-        src: "{{download_result.dest}}"
+        src: "{{ download_result.dest}}"
         dest: /opt/
         remote_src: yes
-      when: not stat_result.stat.exists
-    - name: Find nexus folder
+    # Task 3: Αυτό είναι πιο πολύ για να δούμε το module "find". Στην ουσία θέλουμε να βρούμε το όνομα του φακέλου που είναι αποθηκευμένο το Nexus και να το μετονομάσουμε σε "nexus". 
+    #         Στην ουσία πάμε και κάνουμε την find και κρατάμε το αποτέλεσμα στην μεταβλητή "find_nexus_folder". 
+    #         Στη συνέχεια παμε και κοιτάμε αν υπάρχει ήδη ο φάκελος "nexus", γιατί αν υπαρχει ήδη και πάμε να τρέξουμε το playbook θα μας βγάλει error. Αυτό το κάνουμε
+    #           με το module "stat" όπου κρατάμε το αποτέλεσμά της στη μεταβλητή "stat_result"
+    #         Τέλος πάμε και κάνουμε mv (μετονομασία) το φάκελο που βρήκαμε σε /opt/nexus ΜΟΝΟ αν το stat_result δείξει ότι δεν υπάρχει ήδη ο φάκελος /opt/nexus
+    - name: Find Nexus folder
       find:
-        paths: /opt
-        pattern: "nexus-*"
+        paths: /opt/
+        patterns: "nexus-*"
         file_type: directory
-      register: find_result
-    - name: Rename nexus folder
-      shell: mv {{find_result.files[0].path}} /opt/nexus
-      when: not stat_result.stat.exists
-
-- name: Create nexus user to own nexus folder
-  hosts: nexus_server
-  tasks:
-    - name: Ensure group nexus exists
-      group:
-        name: nexus
-        state: present
-    - name: Create nexus user
-      user:
-        name: nexus
-        group: nexus
-    - name: Make nexus user owner of nexus folder
-      file:
+      register: find_nexus_folder 
+    - name: Check nexus folder stats (if alredy exists)
+      stat:
         path: /opt/nexus
-        state: directory
-        owner: nexus
-        group: nexus
-        recurse: yes
-    - name: Make nexus user owner of sonatype-work folder
-      file:
-        path: /opt/sonatype-work
-        state: directory
-        owner: nexus
-        group: nexus
-        recurse: yes
-
-- name: Start nexus with nexus user
-  hosts: nexus_server
-  become: True
-  become_user: nexus
-  tasks:
-    - name: Set run_as_user nexus
-      lineinfile:
-        path: /opt/nexus/bin/nexus.rc
-        regexp: '^#run_as_user=""'
-        line: run_as_user="nexus"
-    - name: Start nexus
-      command: /opt/nexus/bin/nexus start
-
-- name: Verify nexus running
-  hosts: nexus_server
-  tasks:
-    - name: Check with ps
-      shell: ps aux | grep nexus
-      register: app_status
-    - debug: msg={{app_status.stdout_lines}}
-    - name: Wait one minute
-      pause:
-        minutes: 1
-    - name: Check with netstat
-      shell: netstat -plnt
-      register: app_status
-    - debug: msg={{app_status.stdout_lines}}
+      register: stat_result
+    - debug: msg="{{find_nexus_folder}}"
+    - name: Move nexus folder to /opt/nexus
+      command: mv {{ find_nexus_folder.files[0].path }} /opt/nexus
+      when: not stat_result.stat.exists
+    # Task 4: 
