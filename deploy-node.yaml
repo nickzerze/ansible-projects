@@ -1,7 +1,7 @@
 ---
-- name: Install node and npm
+- name: Install node, npm and acl
   # replace with your host IP address
-  hosts: 3.126.55.251
+  hosts: 63.177.51.23
   # Το θέλουμε για να τρέξει σαν root
   become: True
   become_user: root
@@ -15,9 +15,10 @@
         pkg:
           - nodejs
           - npm
+          - acl
 
-- name: Create new linux user fon node app
-  hosts: 3.126.55.251
+- name: Create new linux user for node app
+  hosts: 63.177.51.23
   become: True
   become_user: root
   tasks:
@@ -26,10 +27,12 @@
         name: zerze_node_user
         comment: Zerze admin
         group: admin
+      register: user_creation
+    - debug: msg={{user_creation}}
 
 - name: Deploy nodejs app
   # replace with your host IP address
-  hosts: 3.126.55.251
+  hosts: 63.177.51.23
   become: True
   become_user: zerze_node_user
   tasks:
