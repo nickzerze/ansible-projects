@@ -23,39 +23,141 @@
   become: True
   become_user: root
   tasks:
-    # Task 1: Κατεβάζουμε το latest Nexus installer και το αποθηκεύουμε στο /opt/ φάκελο. Κρατάμε το αποτέλεσμα στην μεταβλητή "download_result"
+    # Task: 2.1: Αρχικά κοιτάμε αν ο φάκελος /opt/nexus υπάρχει ήδη ώστε να μην κάνουμε ξανά unarchive καθώς και να μην μετονομάζουμε τον φάκελο nexus-* ξανά σε nexus γιατί θα έχω error
+    #            Αυτό το κάνουμε με το module "stat" όπου κρατάμε το αποτέλεσμά της στη μεταβλητή "stat_result"
+    - name: Check nexus folder stats (if alredy exists)
+      stat:
+        path: /opt/nexus
+      register: stat_result
+    # Task 2.2: Κατεβάζουμε το latest Nexus installer και το αποθηκεύουμε στο /opt/ φάκελο. Κρατάμε το αποτέλεσμα στην μεταβλητή "download_result"
     #         γιατί θέλω να βρω ακριβώς το όνομα του αρχείου που κατέβηκε, για να το αποσυμπιέσω στο επόμενο βήμα.
     - name: Download Nexus
       get_url:
         url: https://download.sonatype.com/nexus/3/latest-linux-x86_64.tar.gz
         dest: /opt/
       register: download_result
-    - debug:  msg="{{ download_result }}"
-    # Task 2: Κάνουμε unarchive το αρχειο που κατέβηκε και βρίσκουμε ακριβώς το όνομα (αλλάζει καθώς αλλάζει και το version του Nexus)
+    - debug: msg="{{ download_result }}"
+    # Task 2.3: Κάνουμε unarchive το αρχειο που κατέβηκε και βρίσκουμε ακριβώς το όνομα (αλλάζει καθώς αλλάζει και το version του Nexus)
     #         και το αποθηκεύουμε στον φάκελο /opt/
-    #         SOS: Επειδή το αρχείο είναι σε remote server, πρέπει να βάλουμε το "remote_src: yes" ώστε να καταλάβει το Ansible και να μην το ψάει τοπικά.
+    #         SOS 1: Επειδή το αρχείο είναι σε remote server, πρέπει να βάλουμε το "remote_src: yes" ώστε να καταλάβει το Ansible και να μην το ψάει τοπικά.
+    #         SOS 2: Θα κάνουμε unarchive ΜΟΝΟ αν δεν υπάρχει ήδη ο φάκελος /opt/nexus
     - name: Untar nexus installer
       unarchive:
         src: "{{ download_result.dest}}"
         dest: /opt/
         remote_src: yes
-    # Task 3: Αυτό είναι πιο πολύ για να δούμε το module "find". Στην ουσία θέλουμε να βρούμε το όνομα του φακέλου που είναι αποθηκευμένο το Nexus και να το μετονομάσουμε σε "nexus". 
-    #         Στην ουσία πάμε και κάνουμε την find και κρατάμε το αποτέλεσμα στην μεταβλητή "find_nexus_folder". 
+      when: not stat_result.stat.exists
+    # Task 2.4: Αυτό είναι πιο πολύ για να δούμε το module "find". Στην ουσία θέλουμε να βρούμε το όνομα του φακέλου που είναι αποθηκευμένο το Nexus και να το μετονομάσουμε σε "nexus".
+    #         Στην ουσία πάμε και κάνουμε την find και κρατάμε το αποτέλεσμα στην μεταβλητή "find_nexus_folder".
     #         Στη συνέχεια παμε και κοιτάμε αν υπάρχει ήδη ο φάκελος "nexus", γιατί αν υπαρχει ήδη και πάμε να τρέξουμε το playbook θα μας βγάλει error. Αυτό το κάνουμε
     #           με το module "stat" όπου κρατάμε το αποτέλεσμά της στη μεταβλητή "stat_result"
     #         Τέλος πάμε και κάνουμε mv (μετονομασία) το φάκελο που βρήκαμε σε /opt/nexus ΜΟΝΟ αν το stat_result δείξει ότι δεν υπάρχει ήδη ο φάκελος /opt/nexus
     - name: Find Nexus folder
       find:
         paths: /opt/
-        patterns: "nexus-*"
+        pattern: "nexus-*"
         file_type: directory
-      register: find_nexus_folder 
-    - name: Check nexus folder stats (if alredy exists)
-      stat:
-        path: /opt/nexus
-      register: stat_result
+      register: find_nexus_folder
     - debug: msg="{{find_nexus_folder}}"
     - name: Move nexus folder to /opt/nexus
       command: mv {{ find_nexus_folder.files[0].path }} /opt/nexus
       when: not stat_result.stat.exists
-    # Task 4: 
+
+# 3o PLAY
+- name: Create nexus user to own nexus folders
+  hosts: nexus_server
+  become: True
+  become_user: root
+  tasks:
+    # Task 3.1: Αρχικά επιβεβαιώνουμε ότι υπάρχει το group: "nexus", αν δεν υπάρχει το Ansible θα το φτιάξει μόνο του
+    - name: Ensure group nexus exists
+      group:
+        name: nexus
+        state: present
+    # Task 3.2: Μετά πάμε και φτιάχνουμε τον χρήστη "nexus" και τον βάζουμε αμέσως στο group nexus.
+    #         To "user" module manages user accounts and user attributes,για Windows targets: win_user
+    - name: Create nexus user
+      user:
+        name: nexus
+        group: nexus
+    # Task 3.3: Μετά κάνουμε τον χρήστη "nexus" owner του φακέλου /opt/nexus καθώς και του sonatype-work.
+    #         Το "file" module manages files and file properties, για Windows targets: win_file
+    - name: Make nexus user owner of nexus folder
+      file:
+        path: /opt/nexus
+        state: directory
+        owner: nexus
+        group: nexus
+        recurse: yes
+    - name: Make sonatype-work user owner of nexus folder
+      file:
+        path: /opt/sonatype-work
+        state: directory
+        owner: nexus
+        group: nexus
+        recurse: yes
+
+# 4o PLAY
+- name: Start nexus with nexus user
+  hosts: nexus_server
+  become: True
+  become_user: nexus
+  tasks:
+    # # Task 4.1.a: Πρώτα πρέπει να δηλώσουμε το run_as_user="nexus" μέσα στο αρχείο /opt/nexus/bin/nexus.rc. Αυτό μπορούμε να το κάνουμε με το module blockinfile ή το lineinfile
+    # #             Με το blockinline στην ουσία πάμε στο αρχείο και προσθέτουμε το κομμάτι του κώδικά που είναι στο block. ΔΕΝ αντικαθιστούμε κάτι από τον κώδικα που έχει ήδη το αρχείο
+    # - name: Set run_as_user nexus
+    #   blockinfile:
+    #     path: /opt/nexus/bin/nexus.rc
+    #     block: |
+    #       run_as_user="nexus"
+    # # Task 4.1.b: Με το lineinfile πάμε και αντικαθιστούμε τον κώδικα από το regexp με τον κώδικα που είναι στο line.
+    # - name: Set run_as_user nexus
+    #   lineinfile:
+    #     path: /opt/nexus/bin/nexus.rc
+    #     regexp: '^#run_as_user=""'
+    #     line: run_as_user="nexus"
+    # Task 4.1.c: (UPDATE) Από την έκδοση του nexus 3.80 και μετά λείπει το αρχείο /opt/bin/nexus.rc οπότε πρέπει να το δημιουργήσουμε εμείς και να βάλουμε run_as_user="nexus"
+    #              Οπότε πρώτα θα κάνω ένα task (4.1.c) για να φτιάξω το αρχείο nexus.rc με το module file και μετά με το module blockinfile ή το lineinfile θα βάλω το run_as_user="nexus"
+    - name: Create file /opt/nexus/bin/nexus.rc
+      file:
+        path: /opt/nexus/bin/nexus.rc
+        state: touch
+        owner: nexus
+        group: nexus
+    # Task 4.1.d: Edit /opt/nexus/bin/nexus.rc να έχει το run_as_user="nexus"
+    #             Εδώ το έχω με blockinfile
+    #             Αν το κάνω με lineinfile έχω:
+    #               lineinfile:
+    #                 path: /opt/nexus/bin/nexus.rc
+    #                 regexp: "^"
+    #                 line: run_as_user="nexus"
+    - name: Set run_as_user in the /opt/nexus/bin/nexus.rc file
+      blockinfile:
+        path: /opt/nexus/bin/nexus.rc
+        block: |
+          run_as_user="nexus"
+    # Task 4.2: Θα τρέξουμε το nexus σαν χρήστης "nexus"
+    #           Θα πρέπει να έχουμε ένα instance με τουλάχιστον 4gb ram γιατί διαφορετικά δεν θα τρέξει το nexus. Εδώ θα δείχνει ότι όλα καλά αλλά δεν θα είναι.
+    #           Μπορώ να συνδεθώ με ssh στο instance και να τρέχω με τον χρήστη "nexus" την εντολή /opt/nexus/bin/nexus run για να δω και τα logs.
+    - name: Start nexus
+      command: /opt/nexus/bin/nexus start
+
+# 5o PLAY
+- name: Verify nexus is running
+  hosts: nexus_server
+  tasks:
+    # Task 5.1: Κάνουμε ps aux | grep nexus, για να δούμε αν τρέχει το nexus. Εμφανίζουμε το αποτέλεσμα με χρήση variable
+    - name: Check with ps
+      shell: ps aux | grep nexus
+      register: app_status
+    - debug: msg={{app_status.stdout_lines}}
+    # Task 5.2: περιμένω ένα λεπτό μέχρι να τρέξει κανονικά το nexus. Για να το κάνω χρησιμοποιώ το module "pause".
+    #           Υπάρχει και το module "wait_for" με το οποίο μπορείς να κάνει περισσότερα πράγματα, όπως να περιμένεις μέχρι να ανοίξει μία συγκεκριμένη πόρτα, αλλά είναι πιο περίπλοκο.
+    - name: Wait one minute
+      pause:
+        minutes: 1
+    # Tash=k 5.3: Κάνουμε και netstat -nltp για να δούμε ότι η πόρτα του nexus έχει ανοίξει (8081)
+    - name: Check with netstat
+      shell: netstat -nltp
+      register: app_status
+    - debug: msg={{app_status.stdout_lines}}

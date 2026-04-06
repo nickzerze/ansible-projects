@@ -1,2 +1,2 @@
 [nexus_server]
-18.185.132.64 ansible_ssh_private_key_file=~/.ssh/ansible-key-pair-servers.pem ansible_user=ubuntu
+63.178.122.124 ansible_ssh_private_key_file=~/.ssh/ansible-key-pair-servers.pem ansible_user=ubuntu
