@@ -1,56 +1,93 @@
 ---
-- name: Install node and npm
+- name: Install node, npm and acl
   # replace with your host IP address
-  hosts: X.X.X.X
+  hosts: 63.177.51.23
+  # Το θέλουμε για να τρέξει σαν root
+  become: True
+  become_user: root
   tasks:
+    # Κάνουμε update στα Ubuntu και βάζω valid cache time 3600secs
     - name: Update apt repo and cache
       apt: update_cache=yes force_apt_get=yes cache_valid_time=3600
+      # Εγκατάσταση του nodejs και npm package
     - name: Install nodejs and npm
       apt:
         pkg:
           - nodejs
           - npm
-
+          - acl
 
 - name: Create new linux user for node app
-  # replace with your host IP address
-  hosts: X.X.X.X
-  tasks:
-    - name: Create linux user
-      user:
-      # replace with your username
-        name: "{{linux_name}}"
-        comment: Node User
-        group: admin
-
-
-- name: Deploy nodejs app
-  # replace with your host IP address
-  hosts: X.X.X.X
+  hosts: 63.177.51.23
   become: True
-  # replace with your username
-  become_user: "{{linux_name}}"
+  become_user: root
   vars_files:
     project-vars
   tasks:
+    - name: Create the linux user
+      user:
+        name: "{{linux_new_user}}"
+        comment: Zerze admin
+        group: admin
+
+- name: Deploy nodejs app
+  # replace with your host IP address
+  hosts: 63.177.51.23
+  become: True
+  become_user: "{{linux_new_user}}"
+  vars_files:
+    - project-vars
+  vars:
+    user_home_dir: /home/{{linux_new_user}}
+  tasks:
+    # Με ένα task χρησιμοποιώντας το module unarchive μπορώ να πάρω το archive .tgz από τον local server και να το κάνω unarchive στον remote server
     - name: Unpack the nodejs file
       unarchive:
         # replace with your folder location
         src: "{{location}}/nodejs-app-{{version}}.tgz"
         # replace with your folder location
         dest: "{{user_home_dir}}"
+    # Τώρα πρέπει να εγκαταστήσω τα απαραίτητα depenencies όπως φαίνονται στο package.json αρχείο. Δηλαδή πρέπει να τρέξω την εντολή npm install
     - name: Install dependencies
       npm:
-        # replace with your folder location
         path: "{{user_home_dir}}/package"
+    # Τώρα θα πρέπει να τρέξουμε την εφαρμογή. Δηλαδή πρέπει να τρέξουμε την εντολή node server --> συγκεκριμένα μέσα στον φάκελο που είναι το αρχείο server.js πρέπει να τρέξει η εντολή node server
+    # Αυτό θα γίνει με χρήση του module: command
+    # Για να κλείσει η εντολή και να μην μείνει ανοικτό το terminal, θα πρέπει να τρέξει η εντολή στο background και αυτό θα το κάνω με
+    #   χρήση των module: async και poll
+    # SOS: Η εντολή command ΔΕΝ είναι idempotent γι'αυτό όσες φορές και να τρέξω το playbook θα γράφει συνέχεια "changed" σε αυτό το task
+    #      καθώς η Ansible δεν έχει μηχανισμό για το αν τρέχει ήδη το service, όποτε το τρέχει κάθε φορά ξανά.
     - name: Start the application
       command:
-        # replace with your folder location
         chdir: "{{user_home_dir}}/package/app"
         cmd: node server
       async: 1000
       poll: 0
+    # Τώρα θέλουμε να επιβεβαιώσουμε ότι η εφαρμογή τρέχει. Αυτό θα το κάνουμε με νέο task με το module: shell.
+    # Θα πάρουμε το output της εντολής shell και θα το βάλουμε σε μια μεταβλητή χρησιμοποιώντας το module: register
+    # SOS: ΟΥΤΕ η εντολή shell είναι idempotent με αποτέλεσμα κάθε φορά που θα τρέχει το playbook θα εμφανίζεται σαν "changed" το task.
     - name: Ensure app is running
       shell: ps aux | grep node
       register: app_status
+    # Τώρα θα χρησιμοποιήσουμε το module: debug για να μπορέσω να κάνω print ένα statement κατά τη διάρκεια του execution.
     - debug: msg={{app_status.stdout_lines}}
+# ==============================================================================================================
+# Για να κάνω copy και μετά unarchive Θέλω 2 tasks. Πρώτα copy από τον Local server στον remote server και μετά
+#   να μπω στον remote server και να κάνω unarchive το .tgz που είναι εκεί. SOS: δες ότι βάζω remote_src: yes
+# ==============================================================================================================
+# - name: Deploy nodejs app
+#   # replace with your host IP address
+#   hosts: 3.126.55.251
+#   become: True
+#   # replace with your username
+#   become_user: ubuntu
+#   tasks:
+#     - name: Copy nodejs folder to a server
+#       copy:
+#         src: /home/nickz/nodejs-app-1.0.0.tgz
+#         dest: /home/ubuntu/app-1.0.0.tgz
+#     - name: Unpack the nodejs file
+#       unarchive:
+#         src: /home/ubuntu/app-1.0.0.tgz
+#         dest: /home/ubuntu/
+#         remote_src: yes
