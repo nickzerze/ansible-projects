@@ -1,59 +1,95 @@
 ---
+# Play 1 --> ΕΔΩ ΘΑ ΚΑΝΟΥΜΕ ΟΛΕΣ ΤΙΣ ΕΓΚΑΤΑΣΤΑΣΕΙΣ ΠΟΥ ΧΡΕΙΑΖΟΜΑΣΤΕ.
+# Αρχικά θα εγκαταστήσουμε το Docker. 
+# (ΝΟΤΕ 1): Παλιά στο ec2-instance ΔΕΝ υπήρχε το python3 αλλά μόνο το python2. Για να δουλέψει το ansible σωστώ έπρεπε 
+#           στο ansible.cfg να προσθέσουμε το interpreter_python = /usr/bin/python3 γιατί θέλει python3.
+# (ΝΟΤΕ 2): Εμείς όμως έπρεπε να εγκαταστήσουμε και το python3 καθώς δεν υπήρχε by default στο ec2-instance.
+#           Οπότε στο playbook 1 βάζουμε και την εγκατάσταση του python3. Όμως αφού έχω θέσει το interpreter_python στο ansible.cfg, 
+#           όταν προσπαθούσα να τρέξω το playbook μου έβγαζε error ότι δεν μπορεί να βρει το python3. Για το λόγω αυτό κατά την 
+#           εγκατάσταση του python3 έπρεπε να προσθέσω στο tasks του playbook 1 το vars: ansible_python_interpreter: /usr/bin/python2 
+#           για να μπορέσει να τρέξει το playbook και να εγκαταστήσει το python3.
+# (NOTE 3): Ομοίως με το παραπάνω, παλιά το yum για να δουλέψει ήθελε python2, οπότε έπρεπε να προσθέσουμε και εδώ 
+#           στο tasks το vars: ansible_python_interpreter: /usr/bin/python2
+# Για όλα τα υπόλοιπα tasks στα Play δεν χρειάζεται να προσθέσουμε το vars: ansible_python_interpreter: /usr/bin/python2 
+# γιατί μετά την εγκατάσταση του python3, το ansible θα χρησιμοποιεί αυτόματα το python3 για να τρέξει τα tasks.
 - name: Install Docker
-  hosts: all
+  hosts: docker_server
   become: yes
   tasks:
+    # Task 1.1: Εγκατάσταση του docker. 
     - name: Install Docker
       yum:
         name: docker
         update_cache: yes
         state: present
+
+    # Task 1.2: Θα τρέξουμε το docker και θα χρησιμοποιήσουμε το module systemd. 
     - name: Start docker daemon
       systemd:
         name: docker
         state: started
 
-- name: Install Docker-compose
-  hosts: all
-  tasks:
-    - name: Create docker-compose directory
-      file:
-        path: ~/.docker/cli-plugins
-        state: directory
-    - name: Get architecture of remote machine
-      shell: uname -m
-      register: remote_arch
+    # Task 1.3: Εγκατάσταση του docker compose στο ec2-instance. Χρησιμοποιούμε το get_url για να κατεβάσουμε το binary
+    #         του docker compose από το επίσημο repository. Χρησιμοποιούμε το lookup('pipe', 'uname -m') το οποίο είναι από το 
+    #         jinja για να πάρουμε την αρχιτεκτονική του ec2-instance. Μπορώ και αντί για linux να βάλω {{'lookup('pipe', 'uname -s')|lower}}.
+    #         Επιπλέον θέτουμε το mode: +x για να κάνουμε το binary εκτελέσιμο.
     - name: Install docker-compose
       get_url:
         url: "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-{{lookup('pipe', 'uname -m')}}"
-        dest: ~/.docker/cli-plugins/docker-compose
+        dest: /usr/local/bin/docker-compose
         mode: +x
 
+
+    # - name: Create docker-compose directory
+    #   file:
+    #     path: ~/.docker/cli-plugins
+    #     state: directory
+    # - name: Get architecture of remote machine
+    #   shell: uname -m
+    #   register: remote_arch
+
+
+
+# Play 2
+# Θα προσθέσουμε τον χρήστη ec2-user στο docker group για να μπορεί να τρέχει docker εντολές χωρίς να χρειάζεται sudo.
+# Επίσης θα κάνουμε και ένα reset connection για να πάρει ο χρήστης ec2-user τα δικαιώματα που του βάλαμε.
 - name: Add ec2-user to docker group
-  hosts: all
+  hosts: docker_server
   become: yes
   tasks: 
+    # Task 2.1: Προσθέτουμε τον χρήστη ec2-user στο docker group για να μπορεί να τρέχει docker εντολές χωρίς να χρειάζεται sudo. 
+    #           Χρησιμοποιούμε το module user για να τον προσθέσουμε και επιπλέον το append: yes το θέλουμε για να μην αντικατασταθούν 
+    #           οι υπόλοιπες ομάδες που μπορεί να έχει ο χρήστης ec2-user.
     - name: Add ec2-user to docker group
       user: 
         name: ec2-user
         groups: docker
         append: yes
+    # Task 2.2: Μετά την προσθήκη του χρήστη ec2-user στο docker group, πρέπει να κάνουμε reset connection
+    #           για να πάρει ο χρήστης ec2-user τα δικαιώματα που του βάλαμε.
     - name: Reconnect to server session
       meta: reset_connection
-
-- name: Start docker containers
+    
+# Play3: test redis container install
+- name: Pull redis container image
   hosts: docker_server
-  vars_files:
-    - project-vars
   tasks:
-    - name: Copy docker compose 
-      copy:
-        src: /Users/nana/bootcamp-java-mysql-project/docker-compose-full.yaml
-        dest: /home/ec2-user/docker-compose.yaml
-      docker_login:
-        username: nanatwn
-    - name: Docker login
-        password: "{{docker_password}}"
-    - name: Start containers from compose
-      community.docker.docker_compose_v2:
-        project_src: /home/ec2-user
+  - name: pull redis image
+    command: docker pull redis    
+
+# - name: Start docker containers
+#   hosts: docker_server
+#   vars_files:
+#     - project-vars
+#   tasks:
+#     - name: Copy docker compose 
+#       copy:
+#         src: /Users/nana/bootcamp-java-mysql-project/docker-compose-full.yaml
+#         dest: /home/ec2-user/docker-compose.yaml
+#       docker_login:
+#         username: nanatwn
+#     - name: Docker login
+#         password: "{{docker_password}}"
+#     - name: Start containers from compose
+#       community.docker.docker_compose_v2:
+#         project_src: /home/ec2-user
