@@ -3,4 +3,4 @@ location: /Users/nana/ansible/nodejs-app
 linux_name: nana
 user_home_dir: /home/{{linux_name}}
 
-docker_password: 
+docker_password: 929424ndi!@# # Βάλε τον κωδικό σου αλλά μην το ανεβάσεις στο github.
