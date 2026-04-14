@@ -1,0 +1,111 @@
+---
+# ΑΥΤΟ ΤΟ PLAYBOOK ΕΙΝΑΙ ΠΙΟ ΓΕΝΙΚΌ ΚΑΙ ΟΧΙ ΣΥΓΚΕΚΡΙΜΕΝΑ ΓΙΑ ΤΟ AWS (ΟΠΩΣ ΤΟ deploy-docker-ec2-user.yaml).
+# ΑΥΤΟ ΜΠΟΡΕΙ ΝΑ ΧΡΗΣΙΜΟΠΟΙΗΘΕΙ ΣΕ ΟΠΟΙΑΔΗΠΟΤΕ ΜΗΧΑΝΗ LINUX.
+
+# Play 1
+# ΕΔΩ ΘΑ ΚΑΝΟΥΜΕ ΟΛΕΣ ΤΙΣ ΕΓΚΑΤΑΣΤΑΣΕΙΣ ΠΟΥ ΧΡΕΙΑΖΟΜΑΣΤΕ.
+# Αρχικά θα εγκαταστήσουμε το Docker, μετά θα το τρέξουμε και μετά θα εγκαταστήσουμε το docker compose
+# (ΝΟΤΕ 1): Παλιά στο ec2-instance ΔΕΝ υπήρχε το python3 αλλά μόνο το python2. Για να δουλέψει το ansible σωστώ έπρεπε 
+#           στο ansible.cfg να προσθέσουμε το interpreter_python = /usr/bin/python3 γιατί θέλει python3.
+# (ΝΟΤΕ 2): Εμείς όμως έπρεπε να εγκαταστήσουμε και το python3 καθώς δεν υπήρχε by default στο ec2-instance.
+#           Οπότε στο playbook 1 βάζουμε και την εγκατάσταση του python3. Όμως αφού έχω θέσει το interpreter_python στο ansible.cfg, 
+#           όταν προσπαθούσα να τρέξω το playbook μου έβγαζε error ότι δεν μπορεί να βρει το python3. Για το λόγω αυτό κατά την 
+#           εγκατάσταση του python3 έπρεπε να προσθέσω στο tasks του playbook 1 το vars: ansible_python_interpreter: /usr/bin/python2 
+#           για να μπορέσει να τρέξει το playbook και να εγκαταστήσει το python3.
+# (NOTE 3): Ομοίως με το παραπάνω, παλιά το yum για να δουλέψει ήθελε python2, οπότε έπρεπε να προσθέσουμε και εδώ 
+#           στο tasks το vars: ansible_python_interpreter: /usr/bin/python2
+# Για όλα τα υπόλοιπα tasks στα Play δεν χρειάζεται να προσθέσουμε το vars: ansible_python_interpreter: /usr/bin/python2 
+# γιατί μετά την εγκατάσταση του python3, το ansible θα χρησιμοποιεί αυτόματα το python3 για να τρέξει τα tasks.
+- name: Install and run Docker
+  hosts: docker_server
+  become: yes
+  tasks:
+    # Task 1.1: Εγκατάσταση του docker. Επιπλέον κάνουμε στο ίδιο βήμα και update cache
+    - name: Install Docker
+      yum:
+        name: docker
+        update_cache: yes
+        state: present
+
+    # Task 1.2: Θα τρέξουμε το docker και θα χρησιμοποιήσουμε το module systemd. 
+    - name: Start docker daemon
+      systemd:
+        name: docker
+        state: started
+
+# PLAY 2
+# 
+- name: Create new linux user
+  hosts: docker_server
+  become: yes
+  tasks: 
+    - name: Create new linux user
+      user:
+        name: nzerze_aws
+        groups: adm,docker
+
+# PLAY 3  
+#   Εγκατάσταση του docker compose στο ec2-instance. 
+#   (SOS) : Θα εγκαταστήσουμε το v2 του docker compose το οποίο είναι πλέον plugin του docker και όχι ξεχωριστό binary όπως ήταν το v1.
+#           Γι'αυτό πρέπει να φτιάξουμε και τον φάκελο ~/.docker/cli-plugins και να κατεβάσουμε το binary του docker compose εκεί.
+#             καθώς εκεί ψάχνει το docker για τα Plugins του. 
+#   Χρησιμοποιούμε το get_url για να κατεβάσουμε το binary του docker compose από το επίσημο repository. 
+#   Χρησιμοποιούμε το lookup('pipe', 'uname -m') το οποίο είναι από το jinja για να πάρουμε την αρχιτεκτονική του ec2-instance. 
+#   Μπορώ και αντί για linux να βάλω {{'lookup('pipe', 'uname -s')|lower}}.
+#   Επιπλέον θέτουμε το mode: +x για να κάνουμε το binary εκτελέσιμο.
+# (NOTE): Εδώ ΔΕΝ βάζουμε το become: yes Και μετά become_user: nzerze_aws γιατί θα κάνουμε την εγκατάσταση του docker compose 
+#         με τον χρήστη nzerze_aws.
+- name: Install docker-compose
+  hosts: docker_server
+  become: yes
+  become_user: nzerze_aws
+  tasks:
+  # Task 2.1: Δημιουργία του φακέλου ~/.docker/cli-plugins όπου θα βάλουμε το docker compose plugin.
+  - name: Create docker-compose directory
+    file:
+      path: ~/.docker/cli-plugins
+      state: directory
+  # Task 2.2: Βρίσκω την αρχιτεκτονική του ec2-intstance εδώ.
+  - name: Get architecture of remote machine
+    shell: uname -m
+    register: remote_arch
+  # Task 2.3: Κατεβάζουμε το binary του docker compose από το επίσημο repository.
+  #           Το αποθηκεύουμε στον φάκελο ~/.docker/cli-plugins/docker-compose (μέσα στον φάκελο cli-plugins κοιτάει το Docker για τα plugins του).
+  #           Κάνουμε εκτελέσιμο με mode: +x.
+  - name: Install docker compose 
+    get_url:
+      url: "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-{{lookup('pipe', 'uname -m')}}"
+      dest: ~/.docker/cli-plugins/docker-compose
+      mode: +x
+
+# Play 4
+# Εδώ θα τρέξουμε τα docker containers στο ec2-instance μέσω του νέου χρήστη που φτιάξαμε (zerze_aws).
+# Αυτό θα το κάνουμε με αντιγραφή του docker-compose.yaml αρχείου από το τοπικό μας μηχάνημε στο ec2-instance.
+# (NOTE): Πρώτα από όλα έχουμε το repo: git@github.com:nickzerze/bootcamp-java-mysql-project.git
+#         Μέσα στο repo υπάρχει το docker-compose-full.yaml που έχει όλα τα containers που θέλουμε να τρέξουμε στο ec2-instance.
+#         Θα πρέπει να φτιάξω το docker image και να το ανεβάσω στο docker hub.
+#         Για να το κάνω αυτό τρέχω docker build -t malware4/java-maven-app:bootcamp-java-mysql-project-1.0 . 
+#         και μετά docker push malware4/java-maven-app:bootcamp-java-mysql-project-1.0 -> ώστε μετά να μπορώ να το κατεβάσω μέσω του docker-compose-full.yaml.
+- name: Start docker containers
+  hosts: docker_server
+  become: yes
+  become_user: nzerze_aws
+  vars_files:
+    - project-vars
+  tasks:
+  - name: Copy docker-compose-full.yaml to the ec2-instance as docker-compose.yaml
+    copy:
+      src: /home/nickz/bootcamp-java-mysql-project/docker-compose-full.yaml
+      dest: /home/nzerze_aws/docker-compose.yaml
+  - name: Docker login
+    docker_login:
+      username: malware4
+      password: "{{docker_password}}"
+  - name: Start containers from with docker compose
+    community.docker.docker_compose_v2:
+      project_src: /home/nzerze_aws
+      # state: present για να τρέξει (up) τα containers, 
+      # state: absent για να τα σταματήσει (down) και να τα διαγράψει. 
+      #By default είναι το present, οπότε δεν είναι απαραίτητο να το γράψω.
+      state: present 
+
