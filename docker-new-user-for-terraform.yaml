@@ -17,7 +17,7 @@
 # Για όλα τα υπόλοιπα tasks στα Play δεν χρειάζεται να προσθέσουμε το vars: ansible_python_interpreter: /usr/bin/python2 
 # γιατί μετά την εγκατάσταση του python3, το ansible θα χρησιμοποιεί αυτόματα το python3 για να τρέξει τα tasks.
 - name: Install and run Docker
-  hosts: docker_server
+  hosts: all
   become: yes
   tasks:
     # Task 1.1: Εγκατάσταση του docker. Επιπλέον κάνουμε στο ίδιο βήμα και update cache
@@ -36,7 +36,7 @@
 # PLAY 2
 # 
 - name: Create new linux user
-  hosts: docker_server
+  hosts: all
   become: yes
   tasks: 
     - name: Create new linux user
@@ -56,7 +56,7 @@
 # (NOTE): Εδώ ΔΕΝ βάζουμε το become: yes Και μετά become_user: nzerze_aws γιατί θα κάνουμε την εγκατάσταση του docker compose 
 #         με τον χρήστη nzerze_aws.
 - name: Install docker-compose
-  hosts: docker_server
+  hosts: all
   become: yes
   become_user: nzerze_aws
   tasks:
@@ -87,7 +87,7 @@
 #         Για να το κάνω αυτό τρέχω docker build -t malware4/java-maven-app:bootcamp-java-mysql-project-1.0 . 
 #         και μετά docker push malware4/java-maven-app:bootcamp-java-mysql-project-1.0 -> ώστε μετά να μπορώ να το κατεβάσω μέσω του docker-compose-full.yaml.
 - name: Start docker containers
-  hosts: docker_server
+  hosts: all
   become: yes
   become_user: nzerze_aws
   vars_files:
