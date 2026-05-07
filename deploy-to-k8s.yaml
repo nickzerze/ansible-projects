@@ -8,8 +8,16 @@
         api_version: v1
         kind: Namespace
         state: present
+        # Αυτό το θέλω για να μπορεί το Ansible να συνδεθεί στο νέο EKS cluster
+        # Μπορείς να μην το βάζεις κάθε φορά αν έχει σετάρει την K8S_AUTH_KUBECONFIG μεταβλητή στο path του kubeconfig σου
+        #   μέσω export K8S_AUTH_KUBECONFIG=/mnt/d/Projects/devops-twn/latest/12-terraform/zerze-terraform-learn/config
+        # kubeconfig: /mnt/d/Projects/devops-twn/latest/12-terraform/zerze-terraform-learn/config
     - name: Deploy nginx app 
       kubernetes.core.k8s:
-        src: ~/demo-projects/K8s-Files/nginx-config.yaml
+        src: /home/nickz/ansible-projects/nginx-config.yaml
         state: present
+        # Αυτό το θέλω για να μπορεί το Ansible να συνδεθεί στο νέο EKS cluster
+        # Μπορείς να μην το βάζεις κάθε φορά αν έχει σετάρει την K8S_AUTH_KUBECONFIG μεταβλητή στο path του kubeconfig σου
+        #   μέσω export K8S_AUTH_KUBECONFIG=/mnt/d/Projects/devops-twn/latest/12-terraform/zerze-terraform-learn/config
+        # kubeconfig: /mnt/d/Projects/devops-twn/latest/12-terraform/zerze-terraform-learn/config
         namespace: my-app

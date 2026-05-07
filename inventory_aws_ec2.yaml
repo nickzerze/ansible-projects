@@ -2,5 +2,22 @@
 plugin: aws_ec2
 regions: 
   - eu-central-1
+# Για να φιλτράρουμε τα instances που θα μας επιστρέφει το Plugin. 
+# Συγκεκριμένα μόνο τα Instances Που ξεκινούν με myapp* στο tag Name.
+#  και επιπλέον μόνο αυτά που είναι σε running state.
 # filters:
-#   tag:Name: dev*
+#   tag:Name: myapp*
+#   instance-state-name: running
+
+
+# Εδώ θα ομαδοποιήσουμε τα instances που θα μας επιστρέφει το Plugin με βάση το tag Name. 
+# Συγκεκριμένα θα ομαδοποιήσουμε τα instances που ξεκινούν με myapp-server-dev στο tag Name στο group group_myapp_servers_dev
+# και τα instances που ξεκινούν με myapp-server-prod στο tag Name στο group group_myapp_servers_prod.
+keyed_groups:
+- key: tags.Name
+prefix: ""
+separator: ""
+
+groups:
+  group_myapp_servers_dev: "'myapp-server-dev' in tags.Name"
+  group_myapp_servers_prod: "'myapp-server-prod' in tags.Name"
