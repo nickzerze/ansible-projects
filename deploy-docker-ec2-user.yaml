@@ -100,6 +100,7 @@
       dest: /home/ec2-user/docker-compose.yaml
   - name: Docker login
     docker_login:
+      registry_url: https://index.docker.io/v1/
       username: malware4
       password: "{{docker_password}}"
   - name: Start containers from with docker compose
