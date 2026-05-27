@@ -10,7 +10,7 @@
     # Βλέπουμε ότι εδώ χρησιμοποιούμε το docker_password το οποίο έχουμε ορίσει στο αρχείο project-vars. Δεν
     #   να ορίσουμε και εδώ το vars_files: - project-vars γιατί το έχουμε ήδη ορίσει το επίπεδο του play το οποίο υπάρχει 
     #   στο playbook deploy-docker-with-roles.yaml.
-    password: "{{docker_password}}"
+    password: "{{ docker_username }}"
 - name: Start containers from with docker compose
   community.docker.docker_compose_v2:
     project_src: /home/nzerze_aws

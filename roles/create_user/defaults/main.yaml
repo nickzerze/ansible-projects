@@ -1,1 +1,1 @@
-groups: admin,docker
+user_groups: admin,docker
